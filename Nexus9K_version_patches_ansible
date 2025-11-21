@@ -1,0 +1,70 @@
+---
+- name: Check Nexus 9K version and patches
+  hosts: all
+  gather_facts: no
+  connection: network_cli
+
+  vars_prompt:
+    - name: ansible_user
+      prompt: "Usuario SSH"
+      private: no
+
+    - name: ansible_password
+      prompt: "Password SSH"
+      private: yes
+
+  vars_files:
+    - patches.yml
+
+  tasks:
+
+    - name: Obtener versión NX-OS
+      nxos_command:
+        commands:
+          - show version
+      register: version_output
+
+    - name: Obtener parches instalados
+      nxos_command:
+        commands:
+          - show install committed
+      register: patch_output
+
+    - name: Extraer versión del sistema
+      set_fact:
+        device_version: "{{ version_output.stdout[0] | regex_search('NXOS: version (.*)', '\\1') }}"
+
+    - name: Extraer lista de parches instalados
+      set_fact:
+        installed_patches: "{{ patch_output.stdout[0] | regex_findall('([A-Za-z0-9_.-]+\\.rpm)') }}"
+
+    - name: Mostrar datos del equipo
+      debug:
+        msg: |
+          ======================================
+          Host: {{ inventory_hostname }}
+          Version: {{ device_version }}
+          Parches instalados:
+          {{ installed_patches }}
+          ======================================
+
+    - name: Comparar parches requeridos vs instalados
+      set_fact:
+        missing_patches: "{{ required_patches | difference(installed_patches | map('regex_replace', '\\.rpm$', '') | list) }}"
+
+    - name: Mostrar parches faltantes
+      debug:
+        msg: "Parches faltantes en {{ inventory_hostname }}: {{ missing_patches }}"
+      when: missing_patches | length > 0
+
+    - name: Escribir equipos con parches faltantes
+      lineinfile:
+        path: "Nexus9k_Pending_Patches.txt"
+        line: |
+          Device_name={{ inventory_hostname }}
+          {% for p in missing_patches %}
+          install add {{ p }}.rpm
+          {% endfor %}
+          
+          install activate {% for p in missing_patches %}{{ p }}.rpm {% endfor %}
+      when: missing_patches | length > 0
