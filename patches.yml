@@ -1,0 +1,9 @@
+---
+required_version: "9.3(9)"
+required_patches:
+  - parche1
+  - parche2
+  - parche3
+  - parche4
+  - parche5
+  - parche6
